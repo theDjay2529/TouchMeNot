@@ -4,7 +4,7 @@
 
 # TouchMeNot  
 
-**TouchMeNot** is a specialized LSPosed/Xposed module designed to close the security gaps Google left behind. It goes beyond simple blocking by using intelligent touch-analysis to secure your device without breaking usability.
+**TouchMeNot** is a specialized LSPosed/Xposed module designed to close the security gaps Google left behind in Android. It goes beyond simple blocking by using intelligent analysis to secure your device without breaking usability.
 > **The Problem:** Standard Android allows anyone to toggle Airplane Mode or access the Power Menu from a locked device.
 > 
 > **The Solution:** TouchMeNot blocks unauthorized Quick Settings and Power Menu access while maintaining full interaction with lock screen shortcuts and media controls.
@@ -70,24 +70,25 @@ Follow the steps below to correctly install and activate the module on your devi
 3. **Configure LSPosed:** Open the LSPosed Manager and enable the TouchMeNot module. Ensure the following scopes are selected:
     * **System Framework**
     * **System UI**
+      > (in case you cant find it in Lsposed: Open Lsposed > Click on our Module > Top-right 3 dots > Hide > UNCHECK System apps)
 4. **Finalize:** Restart your phone to apply the hooks, then open the TouchMeNot app to toggle your desired protection blocks.
 
 ---
 
 ## Requirements
 
-TouchMeNot is designed specifically for Google Pixel devices and requires a rooted environment with the LSPosed framework installed.
+TouchMeNot is designed specifically for Google Pixel and LineageOS Devices and require a rooted environment with the LSPosed framework installed.
+Although it was designed with devices running PixelOS and LineageOS in mind, you can still try it out on other devices.
 
 ### System Specifications
-* **Target Devices:** Specifically intended for the Pixel lineup.
-* **Tested Environment:** Extensively tested on a Pixel 7 Pro running multiple versions of the latest Android releases.
+* **Target Devices:** Specifically intended for the Pixel Devices and Custom ROMs such as LineageOS
+* **Tested Environment:** Extensively tested on a Pixel 7 Pro running multiple versions of the latest Android releases, and the Latest LineageOS (23).
 * **Android Version:** Minimum SDK 26; Target/Compile SDK 36.
 * **Framework Requirements:** * LSPosed/Xposed module enabled.
-    * *Required Scopes:* 
-    > - System Framework
+    * *Required Scopes:* > - System Framework
     > - System UI.
 
-**Note**: While the module is optimized for Pixels, it might function on other Android distributions. However, these environments have not been officially tested. If you choose to install this on a non-Pixel device, your feedback is invaluable. Please report your findings via the Feature Request button or join our Telegram community to share your experience. Your contributions help expand the project's compatibility.
+**Note**: While the module is optimized for Pixels and Custom ROMs such as LineageOS, it might function on other Android distributions too. However, these environments have not been officially tested. If you choose to install this on a non-Pixel device, your feedback is invaluable. Please report your findings via the Feature Request button or join our Telegram community to share your experience. Your contributions help expand the project's compatibility.
 
 ---
 
@@ -102,7 +103,7 @@ TouchMeNot is built with a "Security First" philosophy. Because this module hand
 * **Zero Data Collection:**
   >There are no trackers, no analytics, and no remote calls. Your settings are stored exclusively on your device within protected storage.
 * **Local Logging Only:**
-  >Any debugging information is written to a local file (`/sdcard/Download/touchmenot_recorder.log`) that never leaves your device unless you choose to Mannually share it for support.
+  >Any debugging information is written to a local file (`/sdcard/Download/touchmenot_recorder.log`) that never leaves your device unless you choose to manually share it for support.
 * **Minimal Privilege Usage:**
   >Root and Xposed privileges are used strictly to hook the System UI and Framework for blocking unauthorized actions.
 
@@ -114,7 +115,7 @@ TouchMeNot is built with a "Security First" philosophy. Because this module hand
 
 We believe in community-driven security. Whether you are a developer looking to optimize code or a user with a great idea, your input is what makes TouchMeNot better for everyone.
 
-* **Pull Requests:** Contributions are highly encouraged! Whether it's a bug fix, performance optimization, a new protection feature, or a UI/UX polish, feel free to submit a PR or a [Featue Request template](https://github.com/theDjay2529/TouchMeNot/issues/new?template=feature_request.md).
+* **Pull Requests:** Contributions are highly encouraged! Whether it's a bug fix, performance optimization, a new protection feature, or a UI/UX polish, feel free to submit a PR or a [Feature Request template](https://github.com/theDjay2529/TouchMeNot/issues/new?template=feature_request.md).
 * **Issue Tracking:** If you encounter a bug or have a suggestion, please use our provided [Bug Report template](https://github.com/theDjay2529/TouchMeNot/issues/new?template=bug_report.md) to help us address it quickly.
 * **Join the Conversation:** For real-time help, feedback, or to chat with other users, join our **[Telegram Community](https://t.me/+uJDDVqXDoMViMTA1)**. We are always happy to help and hear your thoughts.
 
