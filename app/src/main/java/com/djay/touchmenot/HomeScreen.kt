@@ -58,6 +58,8 @@ fun HomeScreen(ctx: Context) {
     var blockAirplane by remember { mutableStateOf(prefs.getBoolean("tmn_block_airplane", true)) }
     var blockBluetooth by remember { mutableStateOf(prefs.getBoolean("tmn_block_bluetooth", true)) }
     var blockHotspot by remember { mutableStateOf(prefs.getBoolean("tmn_block_hotspot", true)) }
+    var blockDnd by remember { mutableStateOf(prefs.getBoolean("tmn_block_dnd", true)) }
+    var blockVolumeRingerMode by remember { mutableStateOf(prefs.getBoolean("tmn_block_volume_ringer_mode", true)) }
 
     Box(
         modifier = Modifier
@@ -170,6 +172,30 @@ fun HomeScreen(ctx: Context) {
                         onToggle = { enabled ->
                             blockHotspot = enabled
                             PrefsBridge.save(ctx, "tmn_block_hotspot", enabled)
+                        }
+                    )
+
+                    QSTile(
+                        title = "Do Not Disturb",
+                        icon = Icons.Filled.DoNotDisturb,
+                        isEnabled = blockDnd,
+                        description = "Disables DND tile when the device is locked",
+                        modifier = Modifier.fillMaxWidth(),
+                        onToggle = { enabled ->
+                            blockDnd = enabled
+                            PrefsBridge.save(ctx, "tmn_block_dnd", enabled)
+                        }
+                    )
+
+                    QSTile(
+                        title = "Volume Ringer Mode",
+                        icon = Icons.Filled.VolumeUp,
+                        isEnabled = blockVolumeRingerMode,
+                        description = "Blocks ringer mode changes from volume dialog when locked",
+                        modifier = Modifier.fillMaxWidth(),
+                        onToggle = { enabled ->
+                            blockVolumeRingerMode = enabled
+                            PrefsBridge.save(ctx, "tmn_block_volume_ringer_mode", enabled)
                         }
                     )
                 }

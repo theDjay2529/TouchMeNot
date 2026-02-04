@@ -29,6 +29,7 @@ public class QSBlocker implements IXposedHookLoadPackage {
         hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.AirplaneModeTile", "handleClick");
         hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.BluetoothTile", "handleClickWithSatelliteCheck");
         hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.HotspotTile", "handleClick");
+        hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.DndTile", "handleClick");
 
         // Additional discovery hooks for LineageOS/other ROM variants (non-breaking)
         try {
@@ -36,6 +37,12 @@ public class QSBlocker implements IXposedHookLoadPackage {
         } catch (Throwable ignored) {}
         try {
             hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.BluetoothTile", "handleSecondaryClick");
+        } catch (Throwable ignored) {}
+        try {
+            hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.DndTile", "handleSecondaryClick");
+        } catch (Throwable ignored) {}
+        try {
+            hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.DndTile", "onClick");
         } catch (Throwable ignored) {}
         try {
             hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.WifiTile", "handleClick");
@@ -225,6 +232,8 @@ public class QSBlocker implements IXposedHookLoadPackage {
                             shouldBlock = FeatureFlags.blockInternet();
                         } else if (className.endsWith("CellularTile")) {
                             shouldBlock = FeatureFlags.blockInternet();
+                        } else if (className.endsWith("DndTile")) {
+                            shouldBlock = FeatureFlags.blockDnd();
                         } else {
                             shouldBlock = true;
                         }

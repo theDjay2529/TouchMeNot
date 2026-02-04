@@ -22,6 +22,8 @@ public final class FeatureFlags {
     private static volatile boolean blockHotspot = true;
     private static volatile boolean blockInternet = true;
     private static volatile boolean blockBluetooth = true;
+    private static volatile boolean blockDnd = true;
+    private static volatile boolean blockVolumeRingerMode = true;
     private static volatile boolean blockPowerControls = true;
 
     private static final AtomicBoolean initialized = new AtomicBoolean(false);
@@ -80,6 +82,12 @@ public final class FeatureFlags {
                     case "tmn_block_bluetooth":
                         blockBluetooth = v;
                         break;
+                    case "tmn_block_dnd":
+                        blockDnd = v;
+                        break;
+                    case "tmn_block_volume_ringer_mode":
+                        blockVolumeRingerMode = v;
+                        break;
                     case "tmn_block_power_controls":
                         blockPowerControls = v;
                         break;
@@ -108,6 +116,14 @@ public final class FeatureFlags {
 
     public static boolean blockBluetooth() {
         return blockBluetooth;
+    }
+
+    public static boolean blockDnd() {
+        return blockDnd;
+    }
+
+    public static boolean blockVolumeRingerMode() {
+        return blockVolumeRingerMode;
     }
 
     public static boolean blockFooterPowerMenu() {

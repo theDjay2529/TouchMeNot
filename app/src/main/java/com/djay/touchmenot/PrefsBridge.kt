@@ -27,6 +27,8 @@ object PrefsBridge {
                 .putBoolean("tmn_block_hotspot", false)
                 .putBoolean("tmn_block_internet", false)
                 .putBoolean("tmn_block_bluetooth", false)
+                .putBoolean("tmn_block_dnd", false)
+                .putBoolean("tmn_block_volume_ringer_mode", false)
                 .putBoolean("tmn_block_power_controls", false)
                 .apply()
             notifyChange(ctx)
