@@ -3,3 +3,4 @@ com.djay.touchmenot.Logger
 com.djay.touchmenot.QSBlocker
 com.djay.touchmenot.VolumeRingerDiagnostic
 com.djay.touchmenot.VolumeRingerBlocker
+com.djay.touchmenot.VolumeSettingsBlocker

@@ -64,7 +64,7 @@ public class VolumeRingerBlocker implements IXposedHookLoadPackage {
 
     private void rejectFeedback(Context ctx) {
         try {
-            Toast.makeText(ctx, "Unlock to change ringer mode", Toast.LENGTH_SHORT).show();
+            Toast.makeText(ctx, "Unlock to change", Toast.LENGTH_SHORT).show();
             Vibrator vib = (Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
             if (vib != null) {
                 long[] pattern = new long[]{0, 40, 50, 40};
