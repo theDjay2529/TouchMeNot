@@ -33,49 +33,22 @@ public class QSBlocker implements IXposedHookLoadPackage {
         // Additional discovery hooks for LineageOS/other ROM variants (non-breaking)
         try {
             hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.BluetoothTile", "handleClick");
-            DiagnosticLogger.log("HOOK", "BluetoothTile#handleClick attempted (LineageOS/AOSP)");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "BluetoothTile#handleClick not found: " + t.getMessage());
-        }
+        } catch (Throwable ignored) {}
         try {
             hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.BluetoothTile", "handleSecondaryClick");
-            DiagnosticLogger.log("HOOK", "BluetoothTile#handleSecondaryClick attempted");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "BluetoothTile#handleSecondaryClick not found: " + t.getMessage());
-        }
+        } catch (Throwable ignored) {}
         try {
             hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.WifiTile", "handleClick");
-            DiagnosticLogger.log("HOOK", "WifiTile#handleClick attempted (LineageOS)");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "WifiTile#handleClick not found: " + t.getMessage());
-        }
+        } catch (Throwable ignored) {}
         try {
             hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.WifiTile", "handleSecondaryClick");
-            DiagnosticLogger.log("HOOK", "WifiTile#handleSecondaryClick attempted");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "WifiTile#handleSecondaryClick not found: " + t.getMessage());
-        }
+        } catch (Throwable ignored) {}
         try {
             hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.CellularTile", "handleClick");
-            DiagnosticLogger.log("HOOK", "CellularTile#handleClick attempted (LineageOS Mobile Data)");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "CellularTile#handleClick not found: " + t.getMessage());
-        }
+        } catch (Throwable ignored) {}
         try {
             hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.CellularTile", "handleSecondaryClick");
-            DiagnosticLogger.log("HOOK", "CellularTile#handleSecondaryClick attempted");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "CellularTile#handleSecondaryClick not found: " + t.getMessage());
-        }
-
-        // Inspect available methods on target tiles to capture exact names in logs
-        logClassMethods(lpparam, "com.android.systemui.qs.tiles.BluetoothTile");
-        logClassMethods(lpparam, "com.android.systemui.qs.tiles.WifiTile");
-        logClassMethods(lpparam, "com.android.systemui.qs.tiles.InternetTile");
-        logClassMethods(lpparam, "com.android.systemui.qs.tiles.CellularTile");
-
-        // Log touch interaction entrypoints to help trace which tile view is used
-        hookQSTileViewTouchLogging(lpparam);
+        } catch (Throwable ignored) {}
     }
 
     private void hookQSTileImplClick(XC_LoadPackage.LoadPackageParam lpparam) {
@@ -94,7 +67,6 @@ public class QSBlocker implements IXposedHookLoadPackage {
                             FeatureFlags.ensureInitialized(ctx);
                             if (!isKeyguardLocked(ctx)) return;
                             String instName = thisObj.getClass().getName();
-                            DiagnosticLogger.log("QSTileImpl#click", "invoked by: " + instName);
                             if (instName.contains("InternetTile")) {
                                 if (!FeatureFlags.blockInternet()) return;
                                 rejectFeedback(ctx);
@@ -149,35 +121,75 @@ public class QSBlocker implements IXposedHookLoadPackage {
     }
 
     private void hookFooterPowerButton(XC_LoadPackage.LoadPackageParam lpparam) {
+        String[] globalActionMethods = new String[]{
+            "showOrHideDialog",
+            "showDialog",
+            "show",
+            "showGlobalActions",
+            "showGlobalActionsDialog",
+            "openGlobalActions",
+            "openPowerMenu",
+            "showPowerMenu"
+        };
+
+        String[] footerMethods = new String[]{
+            "onPowerMenuClicked",
+            "onPowerMenuButtonClicked",
+            "onPowerButtonClicked",
+            "onPowerMenuClick",
+            "onPowerClick",
+            "showPowerMenu",
+            "showGlobalActions",
+            "openPowerMenu"
+        };
+
+        tryHookFooterClass(lpparam, "com.android.systemui.globalactions.GlobalActionsDialogLite", globalActionMethods);
+        tryHookFooterClass(lpparam, "com.android.systemui.globalactions.GlobalActionsDialog", globalActionMethods);
+        tryHookFooterClass(lpparam, "com.android.systemui.globalactions.GlobalActionsDialogLite$GlobalActionsDialogLite", globalActionMethods);
+        tryHookFooterClass(lpparam, "com.android.systemui.statusbar.phone.PhoneStatusBar", globalActionMethods);
+        tryHookFooterClass(lpparam, "com.android.systemui.qs.footer.ui.viewmodel.FooterActionsViewModel", footerMethods);
+        tryHookFooterClass(lpparam, "com.android.systemui.qs.footer.ui.viewmodel.FooterActionsViewModelImpl", footerMethods);
+        tryHookFooterClass(lpparam, "com.android.systemui.qs.footer.domain.interactor.FooterActionsInteractor", footerMethods);
+        tryHookFooterClass(lpparam, "com.android.systemui.qs.footer.domain.interactor.FooterActionsInteractorImpl", footerMethods);
+        tryHookFooterClass(lpparam, "com.android.systemui.qs.footer.ui.binder.FooterActionsViewBinder", footerMethods);
+        tryHookFooterClass(lpparam, "com.android.systemui.qs.footer.ui.binder.FooterActionsViewBinder$Companion", footerMethods);
+    }
+
+    private void tryHookFooterClass(XC_LoadPackage.LoadPackageParam lpparam, String className, String[] methodNames) {
         try {
-            Class<?> clazz = XposedHelpers.findClass("com.android.systemui.globalactions.GlobalActionsDialogLite", lpparam.classLoader);
+            Class<?> clazz = XposedHelpers.findClass(className, lpparam.classLoader);
+            boolean hookedAny = false;
             for (Method m : clazz.getDeclaredMethods()) {
-                if (!"showOrHideDialog".equals(m.getName())) continue;
-                de.robv.android.xposed.XposedBridge.hookMethod(m, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        try {
-                            Context ctx = getContextFromAny(param.thisObject);
-                            if (ctx != null) {
-                                FeatureFlags.ensureInitialized(ctx);
-                                if (isKeyguardLocked(ctx)) {
-                                    if (!FeatureFlags.blockFooterPowerMenu()) return;
-                                    rejectFeedback(ctx);
-                                    param.setResult(null);
-                                    Logger.blocked("GlobalActionsDialogLite#showOrHideDialog", "keyguard_locked");
+                for (String target : methodNames) {
+                    if (!target.equals(m.getName())) continue;
+                    de.robv.android.xposed.XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            try {
+                                Context ctx = getContextFromAny(param.thisObject);
+                                if (ctx != null) {
+                                    FeatureFlags.ensureInitialized(ctx);
+                                    if (isKeyguardLocked(ctx)) {
+                                        if (!FeatureFlags.blockFooterPowerMenu()) return;
+                                        rejectFeedback(ctx);
+                                        param.setResult(null);
+                                        Logger.blocked(className + "#" + m.getName(), "keyguard_locked");
+                                    }
                                 }
+                            } catch (Throwable t) {
+                                Logger.error(className + "#" + m.getName(), t.getMessage());
                             }
-                        } catch (Throwable t) {
-                            Logger.error("GlobalActionsDialogLite#showOrHideDialog", t.getMessage());
                         }
-                    }
-                });
-                Logger.hookSuccess("GlobalActionsDialogLite#showOrHideDialog hooked");
-                return;
+                    });
+                    hookedAny = true;
+                    Logger.hookSuccess(className + "#" + m.getName() + " hooked");
+                }
             }
-            Logger.hookFail("GlobalActionsDialogLite#showOrHideDialog", "method_not_found");
+            if (!hookedAny) {
+                Logger.hookFail(className, "no_target_methods");
+            }
         } catch (Throwable t) {
-            Logger.hookFail("GlobalActionsDialogLite", t.getMessage());
+            Logger.hookFail(className, t.getMessage());
         }
     }
 
@@ -202,7 +214,6 @@ public class QSBlocker implements IXposedHookLoadPackage {
                         Context ctx = getContextFromAny(param.thisObject);
                         if (ctx == null) return;
                         FeatureFlags.ensureInitialized(ctx);
-                        DiagnosticLogger.log("TileMethod", className + "#" + methodName + " invoked");
                         boolean shouldBlock;
                         if (className.endsWith("AirplaneModeTile")) {
                             shouldBlock = FeatureFlags.blockAirplane();
@@ -231,50 +242,6 @@ public class QSBlocker implements IXposedHookLoadPackage {
             Logger.hookSuccess(className + "#" + methodName + " hooked");
         } catch (Throwable t) {
             Logger.hookFail(className, t.getMessage());
-        }
-    }
-
-    // Enumerate declared methods for a target class and log them for offline analysis
-    private void logClassMethods(XC_LoadPackage.LoadPackageParam lpparam, String className) {
-        try {
-            Class<?> clazz = XposedHelpers.findClass(className, lpparam.classLoader);
-            DiagnosticLogger.log("CLASS", "Inspecting: " + className);
-            for (Method m : clazz.getDeclaredMethods()) {
-                StringBuilder sb = new StringBuilder();
-                sb.append(m.getName()).append("(");
-                Class<?>[] ps = m.getParameterTypes();
-                for (int i = 0; i < ps.length; i++) {
-                    sb.append(ps[i].getSimpleName());
-                    if (i < ps.length - 1) sb.append(", ");
-                }
-                sb.append(")");
-                DiagnosticLogger.log("METHOD", sb.toString());
-            }
-        } catch (Throwable t) {
-            DiagnosticLogger.log("CLASS_FAIL", "Cannot inspect: " + className + " -> " + t.getMessage());
-        }
-    }
-
-    // Log QSTileView touch entrypoints without altering behavior
-    private void hookQSTileViewTouchLogging(XC_LoadPackage.LoadPackageParam lpparam) {
-        try {
-            Class<?> tileView = XposedHelpers.findClass("com.android.systemui.plugins.qs.QSTileView", lpparam.classLoader);
-            for (Method m : tileView.getDeclaredMethods()) {
-                String name = m.getName();
-                if ("onTouchEvent".equals(name) || "onInterceptTouchEvent".equals(name)) {
-                    de.robv.android.xposed.XposedBridge.hookMethod(m, new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                            try {
-                                DiagnosticLogger.log("QSTileView", name + " called on: " + param.thisObject.getClass().getName());
-                            } catch (Throwable ignored) {}
-                        }
-                    });
-                }
-            }
-            Logger.hookSuccess("QSTileView touch logging hooked");
-        } catch (Throwable t) {
-            Logger.hookFail("QSTileView touch logging", t.getMessage());
         }
     }
 

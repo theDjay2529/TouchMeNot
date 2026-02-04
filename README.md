@@ -68,7 +68,7 @@
 > The app is completely safe. It **does not require Internet permission**, meaning no data ever leaves your device. For full details, see our [Privacy Section](#privacy).
 - **Descriptive Logging**:
 > Clean and organized logs are saved locally to help you troubleshoot issues.  
-    **Path:** `/sdcard/Download/touchmenot_recorder.log`
+    **Path:** `/sdcard/Download/touchmenot_recorder.log` (with fallbacks to other locations)
 
 ---
 
