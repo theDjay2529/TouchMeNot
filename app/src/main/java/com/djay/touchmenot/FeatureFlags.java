@@ -23,6 +23,7 @@ public final class FeatureFlags {
     private static volatile boolean blockInternet = true;
     private static volatile boolean blockBluetooth = true;
     private static volatile boolean blockPowerControls = true;
+    private static volatile boolean showFakePowerMenu = true;
 
     private static final AtomicBoolean initialized = new AtomicBoolean(false);
     private static volatile ContentResolver resolver = null;
@@ -83,6 +84,9 @@ public final class FeatureFlags {
                     case "tmn_block_power_controls":
                         blockPowerControls = v;
                         break;
+                    case "tmn_show_fake_power_menu":
+                        showFakePowerMenu = v;
+                        break;
                 }
             }
         } catch (Throwable ignored) {
@@ -116,5 +120,9 @@ public final class FeatureFlags {
 
     public static boolean blockPowerControls() {
         return blockPowerControls;
+    }
+
+    public static boolean showFakePowerMenu() {
+        return showFakePowerMenu;
     }
 }

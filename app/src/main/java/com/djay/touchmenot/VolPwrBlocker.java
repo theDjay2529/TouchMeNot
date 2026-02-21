@@ -2,7 +2,6 @@ package com.djay.touchmenot;
 
 import android.app.KeyguardManager;
 import android.content.Context;
-import android.content.Intent;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -16,6 +15,7 @@ import java.lang.reflect.Method;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
@@ -24,6 +24,7 @@ public class VolPwrBlocker implements IXposedHookLoadPackage {
 
     private static boolean isPowerKeyHeld = false;
     private static boolean isVolumeUpKeyHeld = false;
+    private static boolean isVolumeDownKeyHeld = false;
 
     @Override
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
@@ -31,6 +32,7 @@ public class VolPwrBlocker implements IXposedHookLoadPackage {
         Logger.hookSuccess("VolPwrBlocker:init");
         hookPowerMenu(lpparam);
         hookKeyCombination(lpparam);
+        hookPowerLongPress(lpparam);
     }
 
     private void hookPowerMenu(final XC_LoadPackage.LoadPackageParam lpparam) {
@@ -47,8 +49,13 @@ public class VolPwrBlocker implements IXposedHookLoadPackage {
                         KeyguardManager km = (KeyguardManager) ctx.getSystemService(Context.KEYGUARD_SERVICE);
                         if (km != null && km.isKeyguardLocked()) {
                             param.setResult(null);
-                            dispatchFeedback(ctx, "Unlock to use");
-                            Logger.blocked("PhoneWindowManager#showGlobalActions", "keyguard_locked");
+                            // Show fake power menu if enabled, otherwise just block
+                            if (FeatureFlags.showFakePowerMenu()) {
+                                showFakePowerMenu(ctx);
+                                Logger.blocked("PhoneWindowManager#showGlobalActions", "keyguard_locked_fake_menu_shown");
+                            } else {
+                                Logger.blocked("PhoneWindowManager#showGlobalActions", "keyguard_locked_blocked");
+                            }
                         }
                     } catch (Throwable t) {
                         Logger.error("PhoneWindowManager#showGlobalActions", t.getMessage());
@@ -61,6 +68,101 @@ public class VolPwrBlocker implements IXposedHookLoadPackage {
         }
     }
 
+    /**
+     * Hooks all methods related to power long-press to block vibration in protected mode
+     */
+    private void hookPowerLongPress(final XC_LoadPackage.LoadPackageParam lpparam) {
+        Class<?> pwm;
+        try {
+            pwm = lpparam.classLoader.loadClass("com.android.server.policy.PhoneWindowManager");
+        } catch (Throwable t) {
+            Logger.hookFail("hookPowerLongPress", "Class not found: " + t.getMessage());
+            return;
+        }
+
+        // Hook powerLongPress - this is where the system triggers the vibration + global actions
+        String[] longPressMethods = {
+            "powerLongPress", "powerPress",
+            "globalActionsDialogLongPress", "showGlobalActionsInternal"
+        };
+        for (String methodName : longPressMethods) {
+            try {
+                XposedHelpers.findAndHookMethod(pwm, methodName, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (FakePowerMenu.isInProtectedMode()) {
+                            param.setResult(null);
+                            Logger.blocked("PhoneWindowManager#" + methodName, "blocked_in_protected_mode");
+                        }
+                    }
+                });
+                Logger.hookSuccess("PhoneWindowManager#" + methodName + " hooked");
+            } catch (Throwable ignored) {
+                // Method may not exist on all ROM versions, that's ok
+            }
+        }
+
+        // Hook performHapticFeedbackLw to block the power menu vibration
+        try {
+            // Try the common signature
+            XposedHelpers.findAndHookMethod(pwm, "performHapticFeedbackLw",
+                    "android.view.WindowManagerPolicy$WindowState", int.class, boolean.class, String.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (FakePowerMenu.isInProtectedMode()) {
+                                param.setResult(false);
+                            }
+                        }
+                    });
+            Logger.hookSuccess("PhoneWindowManager#performHapticFeedbackLw hooked (4 args)");
+        } catch (Throwable ignored) {
+            try {
+                // Fallback: try with fewer args
+                XposedHelpers.findAndHookMethod(pwm, "performHapticFeedbackLw",
+                        "android.view.WindowManagerPolicy$WindowState", int.class, boolean.class,
+                        new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                if (FakePowerMenu.isInProtectedMode()) {
+                                    param.setResult(false);
+                                }
+                            }
+                        });
+                Logger.hookSuccess("PhoneWindowManager#performHapticFeedbackLw hooked (3 args)");
+            } catch (Throwable ignored2) {
+                Logger.hookFail("performHapticFeedbackLw", "Could not hook - vibration may still occur");
+            }
+        }
+
+        // Hook the Vibrator service directly to block vibration in protected mode
+        String[] vibratorClasses = {
+            "com.android.server.VibratorService",
+            "com.android.server.vibrator.VibratorManagerService",
+        };
+        for (String className : vibratorClasses) {
+            try {
+                Class<?> cls = lpparam.classLoader.loadClass(className);
+                for (java.lang.reflect.Method m : cls.getDeclaredMethods()) {
+                    if (m.getName().equals("vibrate")) {
+                        XposedBridge.hookMethod(m, new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                if (FakePowerMenu.isInProtectedMode()) {
+                                    param.setResult(null);
+                                    Logger.blocked(className + "#vibrate", "blocked_in_protected_mode");
+                                }
+                            }
+                        });
+                        Logger.hookSuccess(className + "#vibrate hooked");
+                        break;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
     private void hookKeyCombination(final XC_LoadPackage.LoadPackageParam lpparam) {
         try {
             Class<?> pwm = lpparam.classLoader.loadClass("com.android.server.policy.PhoneWindowManager");
@@ -70,34 +172,73 @@ public class VolPwrBlocker implements IXposedHookLoadPackage {
                     try {
                         KeyEvent event = (KeyEvent) param.args[0];
                         if (event == null) return;
-                        if (!isLocked(param.thisObject)) return;
 
                         int keyCode = event.getKeyCode();
-                        if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                            if (keyCode == KeyEvent.KEYCODE_POWER) isPowerKeyHeld = true;
-                            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) isVolumeUpKeyHeld = true;
+                        Context ctx = getContextFromObject(param.thisObject);
+                        if (ctx != null) FeatureFlags.ensureInitialized(ctx);
 
-                            if (isPowerKeyHeld && isVolumeUpKeyHeld) {
-                                Context ctx = getContextFromObject(param.thisObject);
-                                if (ctx != null) FeatureFlags.ensureInitialized(ctx);
-                                if (!FeatureFlags.blockPowerControls()) return;
+                        // Track key states
+                        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                            if (keyCode == KeyEvent.KEYCODE_POWER) {
+                                isPowerKeyHeld = true;
+                            }
+                            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                                isVolumeUpKeyHeld = true;
+                            }
+                            if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                                isVolumeDownKeyHeld = true;
+                            }
+
+                            // PWR + VOL_UP: Show fake menu when locked
+                            if (isPowerKeyHeld && isVolumeUpKeyHeld && !isVolumeDownKeyHeld) {
                                 param.setResult(0);
-                                Logger.blocked("Power+VolUp", "combination_detected_while_locked");
-                                if (ctx != null) {
-                                    KeyguardManager km = (KeyguardManager) ctx.getSystemService(Context.KEYGUARD_SERVICE);
-                                    if (km != null) {
-                                        Intent i = km.createConfirmDeviceCredentialIntent(null, null);
-                                        if (i != null) {
-                                            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                                            ctx.startActivity(i);
-                                            Logger.hookSuccess("ConfirmDeviceCredentialIntent started");
-                                        }
+
+                                // If BlackPage is active, do nothing (need 10 taps to disable)
+                                if (FakePowerMenu.isBlackPageActive()) {
+                                    Logger.blocked("Power+VolUp", "blackpage_active_need_10_taps");
+                                    return;
+                                }
+
+                                if (FeatureFlags.blockPowerControls() && isLocked(param.thisObject)) {
+                                    Logger.blocked("Power+VolUp", "combination_blocked_while_locked");
+                                    if (ctx != null && FeatureFlags.showFakePowerMenu()) {
+                                        showFakePowerMenu(ctx);
                                     }
                                 }
+                                return;
                             }
                         } else if (event.getAction() == KeyEvent.ACTION_UP) {
-                            if (keyCode == KeyEvent.KEYCODE_POWER) isPowerKeyHeld = false;
-                            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) isVolumeUpKeyHeld = false;
+                            if (keyCode == KeyEvent.KEYCODE_POWER) {
+                                isPowerKeyHeld = false;
+                            }
+                            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                                isVolumeUpKeyHeld = false;
+                            }
+                            if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                                isVolumeDownKeyHeld = false;
+                            }
+                        }
+
+                        // PROTECTED MODE: Block power button COMPLETELY (highest priority)
+                        // This blocks ALL power button events, even screen wake
+                        if (FakePowerMenu.isInProtectedMode() && keyCode == KeyEvent.KEYCODE_POWER) {
+                            param.setResult(0);
+                            Logger.blocked("PowerButton", "blocked_in_protected_mode");
+                            return;
+                        }
+
+                        // Only apply other blocks if feature is enabled
+                        if (!FeatureFlags.blockPowerControls()) return;
+
+                        // Normal lockscreen behavior: block combinations
+                        if (isLocked(param.thisObject)) {
+                            if ((keyCode == KeyEvent.KEYCODE_VOLUME_UP && isPowerKeyHeld) ||
+                                (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN && isPowerKeyHeld) ||
+                                (keyCode == KeyEvent.KEYCODE_POWER && (isVolumeUpKeyHeld || isVolumeDownKeyHeld))) {
+                                param.setResult(0);
+                                Logger.blocked("Power+Vol", "partial_combination_blocked");
+                                return;
+                            }
                         }
                     } catch (Throwable t) {
                         Logger.error("interceptKeyBeforeQueueing", t.getMessage());
@@ -145,6 +286,19 @@ public class VolPwrBlocker implements IXposedHookLoadPackage {
             Logger.error("getContextFromObject", t.getMessage());
         }
         return null;
+    }
+
+    private void showFakePowerMenu(Context ctx) {
+        if (ctx == null) return;
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                FakePowerMenu.show(ctx);
+            } catch (Throwable t) {
+                Logger.error("showFakePowerMenu", t.getMessage());
+                // Fallback to original feedback if fake menu fails
+                dispatchFeedback(ctx, "Unlock to use");
+            }
+        });
     }
 
     private void dispatchFeedback(Context ctx, String message) {

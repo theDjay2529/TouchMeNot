@@ -22,7 +22,8 @@ class PreferencesProvider : ContentProvider() {
             "tmn_block_power_controls",
             "tmn_block_airplane",
             "tmn_block_bluetooth",
-            "tmn_block_hotspot"
+            "tmn_block_hotspot",
+            "tmn_show_fake_power_menu"
         )
     }
 

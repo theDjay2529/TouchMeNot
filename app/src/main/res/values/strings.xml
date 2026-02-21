@@ -1,3 +1,14 @@
 <resources>
     <string name="app_name">TouchMeNot</string>
+    <!-- Fake power menu (default: en) -->
+    <string name="fake_power_menu_title">Power menu</string>
+    <string name="fake_power_menu_subtitle">Select an action</string>
+    <string name="fake_power_menu_power_off">Power off</string>
+    <string name="fake_power_menu_restart">Restart</string>
+    <string name="fake_power_menu_emergency">Emergency</string>
+    <string name="fake_power_menu_emergency_toast">Emergency - Unlock the device first</string>
+    <string name="fake_power_menu_fallback_toast">Power menu (unlock required)</string>
+    <string name="fake_shutdown_text">Shutting down…</string>
+    <string name="fake_restart_text">Restarting…</string>
+    <string name="fake_protected_mode_off_toast">Protected mode disabled</string>
 </resources>

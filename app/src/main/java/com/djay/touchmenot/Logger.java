@@ -1,5 +1,7 @@
 package com.djay.touchmenot;
 
+import android.util.Log;
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -53,6 +55,7 @@ public class Logger {
             Writer w = writer;
             if (w == null) return;
             String line = String.format(Locale.US, "%s | %s | %s\n", nowTs(), category, message);
+            Log.d("TouchMeNot", line.trim());
             synchronized (w) {
                 w.write(line);
                 w.flush();

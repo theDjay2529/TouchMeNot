@@ -54,6 +54,7 @@ fun HomeScreen(ctx: Context) {
     val prefs = PrefsBridge.prefs(ctx)
 
     var blockPowerControls by remember { mutableStateOf(prefs.getBoolean("tmn_block_power_controls", true)) }
+    var showFakePowerMenu by remember { mutableStateOf(prefs.getBoolean("tmn_show_fake_power_menu", true)) }
     var blockInternet by remember { mutableStateOf(prefs.getBoolean("tmn_block_internet", true)) }
     var blockAirplane by remember { mutableStateOf(prefs.getBoolean("tmn_block_airplane", true)) }
     var blockBluetooth by remember { mutableStateOf(prefs.getBoolean("tmn_block_bluetooth", true)) }
@@ -88,7 +89,7 @@ fun HomeScreen(ctx: Context) {
                     .padding(horizontal = 24.dp)
             ) {
                 InfoTile(
-                    title = "LSPosed Permissions",
+                    title = "LSPosed Permissions.",
                     infoText = "\nEnable the following permissions in LSposed Manager and restart your phone.",
                     bulletPoints = listOf(
                         "System Framework",
@@ -116,11 +117,71 @@ fun HomeScreen(ctx: Context) {
                     }
                 )
 
-                Spacer(modifier = Modifier.height(40.dp))
+                // Show Fake Power Menu option - only visible when Block Power Menu is enabled
+                AnimatedVisibility(
+                    visible = blockPowerControls,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column {
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                SectionHeader(title = "Quick Settings Panel", icon = Icons.Filled.Settings)
-                Spacer(modifier = Modifier.height(16.dp))
-                
+                        QSTile(
+                            title = "Show Fake Power Menu",
+                            icon = Icons.Filled.ScreenLockPortrait,
+                            isEnabled = showFakePowerMenu,
+                            description = "Displays a fake shutdown dialog on the lockscreen",
+                            modifier = Modifier.fillMaxWidth(),
+                            onToggle = { enabled ->
+                                showFakePowerMenu = enabled
+                                PrefsBridge.save(ctx, "tmn_show_fake_power_menu", enabled)
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Info card about Fake Power Menu
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E).copy(alpha = 0.7f)),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFF2A2A3E))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                            ) {
+                                Text(
+                                    text = "ℹ️  How it works",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "When enabled, a fake power menu will appear on the lockscreen instead of the real one. " +
+                                            "Pressing \"Power Off\" or \"Restart\" will simulate a realistic shutdown animation.\n\n" +
+                                            "• The screen goes completely black (appears powered off)\n" +
+                                            "• WiFi, Mobile Data & Bluetooth are silently enabled\n" +
+                                            "• The device is set to silent mode permanently\n" +
+                                            "• The power button is fully disabled\n" +
+                                            "• GPS & Find My Device remain active for tracking\n\n" +
+                                            "\uD83D\uDD13 To exit protected mode:\n" +
+                                            "First make sure your phone is \"awake\" then tap the black screen 20 times rapidly (each tap within 500ms). " +
+                                            "If you pause too long, the counter resets.",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
