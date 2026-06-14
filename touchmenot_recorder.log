@@ -1,0 +1,15 @@
+=== Log Start: 2026-06-14 13:32:24.025 ===
+2026-06-14 13:32:24.026 | HOOK | QSBlocker:init
+2026-06-14 13:32:24.028 | HOOK | QSTileImpl#click hooked
+2026-06-14 13:32:24.029 | HOOK_FAIL | InternetDialogControllerImpl -> java.lang.ClassNotFoundException: com$android$systemui$qs$tiles$dialog$InternetDialogControllerImpl
+2026-06-14 13:32:24.030 | HOOK | GlobalActionsDialogLite#showOrHideDialog hooked
+2026-06-14 13:32:24.030 | HOOK | com.android.systemui.qs.tiles.AirplaneModeTile#handleClick hooked
+2026-06-14 13:32:24.031 | HOOK | com.android.systemui.qs.tiles.BluetoothTile#handleClickWithSatelliteCheck hooked
+2026-06-14 13:32:24.031 | HOOK | com.android.systemui.qs.tiles.HotspotTile#handleClick hooked
+2026-06-14 13:32:24.032 | HOOK | com.android.systemui.qs.tiles.BluetoothTile#handleClick hooked
+2026-06-14 13:32:24.034 | HOOK | com.android.systemui.qs.tiles.BluetoothTile#handleSecondaryClick hooked
+2026-06-14 13:32:24.035 | HOOK | com.android.systemui.qs.tiles.WifiTile#handleClick hooked
+2026-06-14 13:32:24.036 | HOOK | com.android.systemui.qs.tiles.WifiTile#handleSecondaryClick hooked
+2026-06-14 13:32:24.036 | HOOK_FAIL | com.android.systemui.qs.tiles.CellularTile -> java.lang.ClassNotFoundException: com$android$systemui$qs$tiles$CellularTile
+2026-06-14 13:32:24.036 | HOOK_FAIL | com.android.systemui.qs.tiles.CellularTile -> java.lang.ClassNotFoundException: com$android$systemui$qs$tiles$CellularTile
+2026-06-14 13:32:24.042 | HOOK_FAIL | QSTileView touch logging -> java.lang.ClassNotFoundException: com$android$systemui$plugins$qs$QSTileView

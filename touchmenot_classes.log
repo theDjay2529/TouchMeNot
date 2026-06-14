@@ -1,0 +1,32 @@
+=== Class/Method Trace Start: 2026-06-14 13:32:24.033 ===
+2026-06-14 13:32:24.034 | HOOK | BluetoothTile#handleClick attempted (LineageOS/AOSP)
+2026-06-14 13:32:24.034 | HOOK | BluetoothTile#handleSecondaryClick attempted
+2026-06-14 13:32:24.035 | HOOK | WifiTile#handleClick attempted (LineageOS)
+2026-06-14 13:32:24.036 | HOOK | WifiTile#handleSecondaryClick attempted
+2026-06-14 13:32:24.036 | HOOK | CellularTile#handleClick attempted (LineageOS Mobile Data)
+2026-06-14 13:32:24.036 | HOOK | CellularTile#handleSecondaryClick attempted
+2026-06-14 13:32:24.037 | CLASS | Inspecting: com.android.systemui.qs.tiles.BluetoothTile
+2026-06-14 13:32:24.037 | METHOD | getDetailsViewModel(Consumer)
+2026-06-14 13:32:24.037 | METHOD | getLongClickIntent()
+2026-06-14 13:32:24.037 | METHOD | getMetricsCategory()
+2026-06-14 13:32:24.037 | METHOD | getTileLabel()
+2026-06-14 13:32:24.037 | METHOD | handleClick(Expandable)
+2026-06-14 13:32:24.037 | METHOD | handleClickWithSatelliteCheck(Runnable)
+2026-06-14 13:32:24.037 | METHOD | handleSecondaryClick(Expandable)
+2026-06-14 13:32:24.037 | METHOD | handleSetListening(boolean)
+2026-06-14 13:32:24.037 | METHOD | handleUpdateState(QSTile$State, Object)
+2026-06-14 13:32:24.038 | METHOD | isAvailable()
+2026-06-14 13:32:24.038 | METHOD | newTileState()
+2026-06-14 13:32:24.038 | METHOD | toggleBluetooth()
+2026-06-14 13:32:24.038 | METHOD | unregisterBatteryChangedCallback()
+2026-06-14 13:32:24.038 | CLASS | Inspecting: com.android.systemui.qs.tiles.WifiTile
+2026-06-14 13:32:24.038 | METHOD | getDetailsViewModel()
+2026-06-14 13:32:24.038 | METHOD | getLongClickIntent()
+2026-06-14 13:32:24.038 | METHOD | getTileLabel()
+2026-06-14 13:32:24.038 | METHOD | handleClick(Expandable)
+2026-06-14 13:32:24.038 | METHOD | handleSecondaryClick(Expandable)
+2026-06-14 13:32:24.038 | METHOD | handleUpdateState(QSTile$State, Object)
+2026-06-14 13:32:24.038 | METHOD | isAvailable()
+2026-06-14 13:32:24.039 | METHOD | newTileState()
+2026-06-14 13:32:24.041 | CLASS_FAIL | Cannot inspect: com.android.systemui.qs.tiles.InternetTile -> java.lang.ClassNotFoundException: com$android$systemui$qs$tiles$InternetTile
+2026-06-14 13:32:24.042 | CLASS_FAIL | Cannot inspect: com.android.systemui.qs.tiles.CellularTile -> java.lang.ClassNotFoundException: com$android$systemui$qs$tiles$CellularTile

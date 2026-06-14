@@ -128,6 +128,7 @@ public class QSBlocker implements IXposedHookLoadPackage {
     }
 
     private void hookFooterPowerButton(XC_LoadPackage.LoadPackageParam lpparam) {
+<<<<<<< Updated upstream
         String[] globalActionMethods = new String[]{
             "showOrHideDialog",
             "showDialog",
@@ -195,6 +196,58 @@ public class QSBlocker implements IXposedHookLoadPackage {
             if (!hookedAny) {
                 Logger.hookFail(className, "no_target_methods");
             }
+=======
+        hookGlobalActionsClass(lpparam, "com.android.systemui.globalactions.GlobalActionsDialogLite");
+        hookGlobalActionsClass(lpparam, "com.android.systemui.globalactions.GlobalActionsDialogLite$ActionsDialogLite");
+    }
+
+    private void hookGlobalActionsClass(XC_LoadPackage.LoadPackageParam lpparam, String className) {
+        try {
+            Class<?> clazz = XposedHelpers.findClass(className, lpparam.classLoader);
+            logClassMethods(lpparam, className);
+            Method target = null;
+            for (Method m : clazz.getDeclaredMethods()) {
+                String name = m.getName();
+                if ("showOrHideDialog".equals(name) || "showDialog".equals(name) || "toggleDialog".equals(name)) {
+                    target = m;
+                    break;
+                }
+            }
+            if (target == null) {
+                for (Method m : clazz.getDeclaredMethods()) {
+                    String name = m.getName();
+                    if ((name.startsWith("show") || name.startsWith("toggle")) && m.getReturnType() == void.class) {
+                        target = m;
+                        break;
+                    }
+                }
+            }
+            if (target == null) {
+                Logger.hookFail(className, "method_not_found");
+                return;
+            }
+            final String methodName = target.getName();
+            de.robv.android.xposed.XposedBridge.hookMethod(target, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    try {
+                        Context ctx = getContextFromAny(param.thisObject);
+                        if (ctx != null) {
+                            FeatureFlags.ensureInitialized(ctx);
+                            if (isKeyguardLocked(ctx)) {
+                                if (!FeatureFlags.blockFooterPowerMenu()) return;
+                                rejectFeedback(ctx);
+                                param.setResult(null);
+                                Logger.blocked(className + "#" + methodName, "keyguard_locked");
+                            }
+                        }
+                    } catch (Throwable t) {
+                        Logger.error(className + "#" + methodName, t.getMessage());
+                    }
+                }
+            });
+            Logger.hookSuccess(className + "#" + methodName + " hooked");
+>>>>>>> Stashed changes
         } catch (Throwable t) {
             Logger.hookFail(className, t.getMessage());
         }
@@ -274,7 +327,8 @@ public class QSBlocker implements IXposedHookLoadPackage {
     private boolean isKeyguardLocked(Context ctx) {
         try {
             KeyguardManager km = (KeyguardManager) ctx.getSystemService(Context.KEYGUARD_SERVICE);
-            return km != null && km.isKeyguardLocked();
+            if (km == null) return false;
+            return km.isKeyguardLocked() || km.isDeviceLocked() || km.inKeyguardRestrictedInputMode();
         } catch (Throwable t) {
             return false;
         }
@@ -292,6 +346,14 @@ public class QSBlocker implements IXposedHookLoadPackage {
             try {
                 Object c2 = XposedHelpers.callMethod(obj, "getContext");
                 if (c2 instanceof Context) return (Context) c2;
+            } catch (Throwable ignored) {
+            }
+            try {
+                Class<?> activityThread = Class.forName("android.app.ActivityThread");
+                java.lang.reflect.Method currentApplication = activityThread.getDeclaredMethod("currentApplication");
+                currentApplication.setAccessible(true);
+                Object app = currentApplication.invoke(null);
+                if (app instanceof Context) return (Context) app;
             } catch (Throwable ignored) {
             }
         } catch (Throwable ignored) {

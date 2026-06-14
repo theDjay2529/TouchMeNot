@@ -38,6 +38,9 @@
         <meta-data
             android:name="xposedminversion"
             android:value="82" />
+        <meta-data
+            android:name="xposedscope"
+            android:value="android;com.android.systemui" />
 
     </application>
 </manifest>
