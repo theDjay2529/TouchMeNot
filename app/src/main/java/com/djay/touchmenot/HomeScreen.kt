@@ -138,7 +138,7 @@ fun HomeScreen(ctx: Context) {
                     )
 
                     QSTile(
-                        title = "Internet Tile",
+                        title = "Wifi & Internet Tile",
                         icon = Icons.Filled.SignalCellularAlt,
                         isEnabled = blockInternet,
                         description = "Disables Wi‑Fi & Internet tile when the device is locked",
