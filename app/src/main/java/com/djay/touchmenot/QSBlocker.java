@@ -24,93 +24,104 @@ public class QSBlocker implements IXposedHookLoadPackage {
         if (!SYSTEMUI.equals(lpparam.packageName)) return;
 
         Logger.hookSuccess("QSBlocker:init");
+
+        // 1. Hook QSTileImpl to intercept clicks on all tiles extending it
         hookQSTileImplClick(lpparam);
+
+        // 2. Hook Internet Dialog controller
         hookInternetDialog(lpparam);
+
+        // 3. Hook Footer Power menu
         hookFooterPowerButton(lpparam);
-        hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.AirplaneModeTile", "handleClick");
-        hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.BluetoothTile", "handleClickWithSatelliteCheck");
-        hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.HotspotTile", "handleClick");
 
-        // Additional discovery hooks for LineageOS/other ROM variants (non-breaking)
-        try {
-            hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.BluetoothTile", "handleClick");
-            DiagnosticLogger.log("HOOK", "BluetoothTile#handleClick attempted (LineageOS/AOSP)");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "BluetoothTile#handleClick not found: " + t.getMessage());
-        }
-        try {
-            hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.BluetoothTile", "handleSecondaryClick");
-            DiagnosticLogger.log("HOOK", "BluetoothTile#handleSecondaryClick attempted");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "BluetoothTile#handleSecondaryClick not found: " + t.getMessage());
-        }
-        try {
-            hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.WifiTile", "handleClick");
-            DiagnosticLogger.log("HOOK", "WifiTile#handleClick attempted (LineageOS)");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "WifiTile#handleClick not found: " + t.getMessage());
-        }
-        try {
-            hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.WifiTile", "handleSecondaryClick");
-            DiagnosticLogger.log("HOOK", "WifiTile#handleSecondaryClick attempted");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "WifiTile#handleSecondaryClick not found: " + t.getMessage());
-        }
-        try {
-            hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.CellularTile", "handleClick");
-            DiagnosticLogger.log("HOOK", "CellularTile#handleClick attempted (LineageOS Mobile Data)");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "CellularTile#handleClick not found: " + t.getMessage());
-        }
-        try {
-            hookSimpleTile(lpparam, "com.android.systemui.qs.tiles.CellularTile", "handleSecondaryClick");
-            DiagnosticLogger.log("HOOK", "CellularTile#handleSecondaryClick attempted");
-        } catch (Throwable t) {
-            DiagnosticLogger.log("HOOK_FAIL", "CellularTile#handleSecondaryClick not found: " + t.getMessage());
-        }
+        // 4. Hook specific tile classes directly to catch overloads or custom behaviors
+        hookClickMethods(lpparam, "com.android.systemui.qs.tiles.InternetTile", "internet");
+        hookClickMethods(lpparam, "com.android.systemui.qs.tiles.InternetTileNewImpl", "internet");
+        hookClickMethods(lpparam, "com.android.systemui.qs.tiles.CellularTile", "internet");
+        hookClickMethods(lpparam, "com.android.systemui.qs.tiles.MobileDataTile", "internet");
+        hookClickMethods(lpparam, "com.android.systemui.qs.tiles.WifiTile", "internet");
+        hookClickMethods(lpparam, "com.android.systemui.qs.tiles.BluetoothTile", "bluetooth");
+        hookClickMethods(lpparam, "com.android.systemui.qs.tiles.AirplaneModeTile", "airplane");
+        hookClickMethods(lpparam, "com.android.systemui.qs.tiles.HotspotTile", "hotspot");
 
-        // Inspect available methods on target tiles to capture exact names in logs
+        // 5. Inspect available methods on target tiles to capture exact names in logs
         logClassMethods(lpparam, "com.android.systemui.qs.tiles.BluetoothTile");
         logClassMethods(lpparam, "com.android.systemui.qs.tiles.WifiTile");
         logClassMethods(lpparam, "com.android.systemui.qs.tiles.InternetTile");
         logClassMethods(lpparam, "com.android.systemui.qs.tiles.CellularTile");
+        logClassMethods(lpparam, "com.android.systemui.qs.tiles.MobileDataTile");
 
-        // Log touch interaction entrypoints to help trace which tile view is used
+        // 6. Log touch interaction entrypoints to help trace which tile view is used
         hookQSTileViewTouchLogging(lpparam);
+
+        // 7. Hook modern QS3 pipeline interactors (Android 17 / modern SystemUI)
+        hookUserActionInteractor(lpparam, "com.android.systemui.qs.tiles.impl.cellular.domain.interactor.CellularTileUserActionInteractor", "internet");
+        hookUserActionInteractor(lpparam, "com.android.systemui.qs.tiles.impl.internet.domain.interactor.InternetTileUserActionInteractor", "internet");
+        hookUserActionInteractor(lpparam, "com.android.systemui.qs.tiles.impl.bluetooth.domain.interactor.BluetoothTileUserActionInteractor", "bluetooth");
+        hookUserActionInteractor(lpparam, "com.android.systemui.qs.tiles.impl.airplane.domain.interactor.AirplaneModeTileUserActionInteractor", "airplane");
+        hookUserActionInteractor(lpparam, "com.android.systemui.qs.tiles.impl.hotspot.domain.interactor.HotspotTileUserActionInteractor", "hotspot");
     }
 
     private void hookQSTileImplClick(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
             Class<?> qstileImpl = XposedHelpers.findClass("com.android.systemui.qs.tileimpl.QSTileImpl", lpparam.classLoader);
+            boolean hookedAny = false;
             for (Method m : qstileImpl.getDeclaredMethods()) {
-                if (!"click".equals(m.getName())) continue;
-                de.robv.android.xposed.XposedBridge.hookMethod(m, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        try {
-                            Object thisObj = param.thisObject;
-                            if (thisObj == null) return;
-                            Context ctx = getContextFromAny(thisObj);
-                            if (ctx == null) return;
-                            FeatureFlags.ensureInitialized(ctx);
-                            if (!isKeyguardLocked(ctx)) return;
-                            String instName = thisObj.getClass().getName();
-                            DiagnosticLogger.log("QSTileImpl#click", "invoked by: " + instName);
-                            if (instName.contains("InternetTile")) {
-                                if (!FeatureFlags.blockInternet()) return;
-                                rejectFeedback(ctx);
-                                param.setResult(null);
-                                Logger.blocked("QSTileImpl#click", "InternetTile_blocked");
+                String name = m.getName();
+                if ("click".equals(name) || "handleClick".equals(name) || "handleSecondaryClick".equals(name) || "handleLongClick".equals(name)) {
+                    de.robv.android.xposed.XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            try {
+                                Object thisObj = param.thisObject;
+                                if (thisObj == null) return;
+                                Context ctx = getContextFromAny(thisObj);
+                                if (ctx == null) return;
+                                FeatureFlags.ensureInitialized(ctx);
+                                
+                                String instName = thisObj.getClass().getName();
+                                String tileKey = null;
+                                if (instName.contains("InternetTile") || instName.contains("CellularTile") || instName.contains("MobileDataTile") || instName.contains("WifiTile")) {
+                                    tileKey = "internet";
+                                } else if (instName.contains("BluetoothTile")) {
+                                    tileKey = "bluetooth";
+                                } else if (instName.contains("AirplaneModeTile")) {
+                                    tileKey = "airplane";
+                                } else if (instName.contains("HotspotTile")) {
+                                    tileKey = "hotspot";
+                                }
+                                
+                                if (tileKey == null) return;
+                                
+                                boolean shouldBlock = false;
+                                if ("internet".equals(tileKey)) {
+                                    shouldBlock = FeatureFlags.blockInternet();
+                                } else if ("bluetooth".equals(tileKey)) {
+                                    shouldBlock = FeatureFlags.blockBluetooth();
+                                } else if ("airplane".equals(tileKey)) {
+                                    shouldBlock = FeatureFlags.blockAirplane();
+                                } else if ("hotspot".equals(tileKey)) {
+                                    shouldBlock = FeatureFlags.blockHotspot();
+                                }
+                                
+                                if (!shouldBlock) return;
+                                if (isKeyguardLocked(ctx)) {
+                                    rejectFeedback(ctx);
+                                    param.setResult(null);
+                                    Logger.blocked("QSTileImpl#" + m.getName() + " (" + instName + ")", "keyguard_locked");
+                                }
+                            } catch (Throwable t) {
+                                Logger.error("QSTileImpl#" + m.getName(), t.getMessage());
                             }
-                        } catch (Throwable t) {
-                            Logger.error("QSTileImpl#click", t.getMessage());
                         }
-                    }
-                });
-                Logger.hookSuccess("QSTileImpl#click hooked");
-                return;
+                    });
+                    hookedAny = true;
+                    Logger.hookSuccess("QSTileImpl#" + name + " hooked");
+                }
             }
-            Logger.hookFail("QSTileImpl#click", "method_not_found");
+            if (!hookedAny) {
+                Logger.hookFail("QSTileImpl", "no_methods_found");
+            }
         } catch (Throwable t) {
             Logger.hookFail("QSTileImpl", t.getMessage());
         }
@@ -277,18 +288,67 @@ public class QSBlocker implements IXposedHookLoadPackage {
         }
     }
 
-    private void hookSimpleTile(XC_LoadPackage.LoadPackageParam lpparam, String className, String methodName) {
+    private void hookClickMethods(XC_LoadPackage.LoadPackageParam lpparam, String className, String tileKey) {
+        try {
+            Class<?> clazz = XposedHelpers.findClass(className, lpparam.classLoader);
+            boolean hookedAny = false;
+            for (Method m : clazz.getDeclaredMethods()) {
+                String name = m.getName();
+                if ("click".equals(name) || "handleClick".equals(name) || "handleSecondaryClick".equals(name) || "handleLongClick".equals(name) || "handleClickWithSatelliteCheck".equals(name)) {
+                    de.robv.android.xposed.XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            try {
+                                Context ctx = getContextFromAny(param.thisObject);
+                                if (ctx == null) return;
+                                FeatureFlags.ensureInitialized(ctx);
+                                
+                                boolean shouldBlock = false;
+                                if ("internet".equals(tileKey)) {
+                                    shouldBlock = FeatureFlags.blockInternet();
+                                } else if ("bluetooth".equals(tileKey)) {
+                                    shouldBlock = FeatureFlags.blockBluetooth();
+                                } else if ("airplane".equals(tileKey)) {
+                                    shouldBlock = FeatureFlags.blockAirplane();
+                                } else if ("hotspot".equals(tileKey)) {
+                                    shouldBlock = FeatureFlags.blockHotspot();
+                                }
+                                
+                                if (!shouldBlock) return;
+                                if (isKeyguardLocked(ctx)) {
+                                    rejectFeedback(ctx);
+                                    param.setResult(null);
+                                    Logger.blocked(className + "#" + m.getName(), "keyguard_locked");
+                                }
+                            } catch (Throwable t) {
+                                Logger.error(className + "#" + m.getName(), t.getMessage());
+                            }
+                        }
+                    });
+                    hookedAny = true;
+                    Logger.hookSuccess(className + "#" + name + " hooked");
+                }
+            }
+            if (!hookedAny) {
+                Logger.hookFail(className, "no_click_methods_found");
+            }
+        } catch (Throwable t) {
+            Logger.hookFail(className, t.getMessage());
+        }
+    }
+
+    private void hookUserActionInteractor(XC_LoadPackage.LoadPackageParam lpparam, String className, String tileKey) {
         try {
             Class<?> clazz = XposedHelpers.findClass(className, lpparam.classLoader);
             Method target = null;
             for (Method m : clazz.getDeclaredMethods()) {
-                if (methodName.equals(m.getName())) {
+                if ("handleInput".equals(m.getName())) {
                     target = m;
                     break;
                 }
             }
             if (target == null) {
-                Logger.hookFail(className + "#" + methodName, "method_not_found");
+                Logger.hookFail(className + "#handleInput", "method_not_found");
                 return;
             }
             de.robv.android.xposed.XposedBridge.hookMethod(target, new XC_MethodHook() {
@@ -298,33 +358,31 @@ public class QSBlocker implements IXposedHookLoadPackage {
                         Context ctx = getContextFromAny(param.thisObject);
                         if (ctx == null) return;
                         FeatureFlags.ensureInitialized(ctx);
-                        DiagnosticLogger.log("TileMethod", className + "#" + methodName + " invoked");
-                        boolean shouldBlock;
-                        if (className.endsWith("AirplaneModeTile")) {
-                            shouldBlock = FeatureFlags.blockAirplane();
-                        } else if (className.endsWith("BluetoothTile")) {
+                        DiagnosticLogger.log("UserActionInteractor", className + "#handleInput invoked");
+
+                        boolean shouldBlock = false;
+                        if ("internet".equals(tileKey)) {
+                            shouldBlock = FeatureFlags.blockInternet();
+                        } else if ("bluetooth".equals(tileKey)) {
                             shouldBlock = FeatureFlags.blockBluetooth();
-                        } else if (className.endsWith("HotspotTile")) {
+                        } else if ("airplane".equals(tileKey)) {
+                            shouldBlock = FeatureFlags.blockAirplane();
+                        } else if ("hotspot".equals(tileKey)) {
                             shouldBlock = FeatureFlags.blockHotspot();
-                        } else if (className.endsWith("WifiTile")) {
-                            shouldBlock = FeatureFlags.blockInternet();
-                        } else if (className.endsWith("CellularTile")) {
-                            shouldBlock = FeatureFlags.blockInternet();
-                        } else {
-                            shouldBlock = true;
                         }
+
                         if (!shouldBlock) return;
-                        if (ctx != null && isKeyguardLocked(ctx)) {
+                        if (isKeyguardLocked(ctx)) {
                             rejectFeedback(ctx);
                             param.setResult(null);
-                            Logger.blocked(className + "#" + methodName, "keyguard_locked");
+                            Logger.blocked(className + "#handleInput", "keyguard_locked");
                         }
                     } catch (Throwable t) {
-                        Logger.error(className + "#" + methodName, t.getMessage());
+                        Logger.error(className + "#handleInput", t.getMessage());
                     }
                 }
             });
-            Logger.hookSuccess(className + "#" + methodName + " hooked");
+            Logger.hookSuccess(className + "#handleInput hooked");
         } catch (Throwable t) {
             Logger.hookFail(className, t.getMessage());
         }

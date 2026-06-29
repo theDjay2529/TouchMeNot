@@ -198,7 +198,7 @@ fun HomeScreen(ctx: Context) {
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Current Version: V1.1.1",
+                                text = "Current Version: V1.1.2",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = Color.White.copy(alpha = 0.7f)
