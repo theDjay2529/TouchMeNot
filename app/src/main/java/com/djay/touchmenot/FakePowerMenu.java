@@ -46,6 +46,17 @@ public class FakePowerMenu {
     private static long lastTapTime = 0; // Timestamp del último toque
     private static android.app.Dialog inAppMenuDialog = null;
     private static android.app.Dialog inAppBlackDialog = null;
+    private static Context appContext = null;
+    private static android.content.BroadcastReceiver menuReceiver = null;
+    private static final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private static final long MENU_AUTO_DISMISS_MS = 12000; // Auto-dismiss the fake menu if left untouched
+    private static final Runnable autoDismissRunnable = new Runnable() {
+        @Override
+        public void run() {
+            Logger.blocked("FakePowerMenu", "menu_auto_dismiss_timeout");
+            dismissMenu();
+        }
+    };
 
     /**
      * Shows a fake power menu dialog that mimics the system power menu.
@@ -85,6 +96,8 @@ public class FakePowerMenu {
 
             windowManager.addView(menuView, params);
             menuOverlay = menuView;
+            registerMenuReceiver(context);
+            scheduleMenuAutoDismiss();
 
             // Fade in animation
             menuView.setAlpha(0f);
@@ -184,20 +197,90 @@ public class FakePowerMenu {
      */
     private static void dismissMenu() {
         try {
+            cancelMenuAutoDismiss();
+            unregisterMenuReceiver();
+            // NOTE: never gate removal on isAttachedToWindow(). A view added via
+            // WindowManager.addView() is registered with WMS synchronously, but
+            // isAttachedToWindow() only becomes true after the first traversal
+            // (~1 frame later). Removing during that gap is valid; skipping it here
+            // is exactly what left orphan lockscreen windows that never closed.
             if (menuOverlay != null && windowManager != null) {
-                if (menuOverlay.isAttachedToWindow()) {
+                try {
                     windowManager.removeView(menuOverlay);
+                } catch (Throwable ignored) {
                 }
-                menuOverlay = null;
             }
+            menuOverlay = null;
             if (backgroundOverlay != null && windowManager != null) {
-                if (backgroundOverlay.isAttachedToWindow()) {
+                try {
                     windowManager.removeView(backgroundOverlay);
+                } catch (Throwable ignored) {
                 }
-                backgroundOverlay = null;
             }
+            backgroundOverlay = null;
         } catch (Throwable t) {
             Logger.error("dismissMenu", t.getMessage());
+        }
+    }
+
+    /**
+     * Schedules a safety timeout so the fake menu can never linger indefinitely
+     * (e.g. if the user walks away without touching it).
+     */
+    private static void scheduleMenuAutoDismiss() {
+        try {
+            uiHandler.removeCallbacks(autoDismissRunnable);
+            uiHandler.postDelayed(autoDismissRunnable, MENU_AUTO_DISMISS_MS);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void cancelMenuAutoDismiss() {
+        try {
+            uiHandler.removeCallbacks(autoDismissRunnable);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Registers a receiver that tears the fake menu down as soon as the device is
+     * unlocked or the screen turns off. Without this, unlocking with a fingerprint
+     * while the fake menu is up leaves it floating over the launcher. The receiver
+     * is only used for the menu card; the protected-mode black screen is intentionally
+     * persistent and is dismissed separately via the 20-tap gesture.
+     */
+    private static void registerMenuReceiver(Context context) {
+        try {
+            if (menuReceiver != null) return;
+            Context base = context.getApplicationContext();
+            if (base == null) base = context;
+            appContext = base;
+            menuReceiver = new android.content.BroadcastReceiver() {
+                @Override
+                public void onReceive(Context c, android.content.Intent intent) {
+                    Logger.blocked("FakePowerMenu", "menu_dismissed_by_" +
+                            (intent != null ? intent.getAction() : "null"));
+                    dismissMenu();
+                }
+            };
+            android.content.IntentFilter filter = new android.content.IntentFilter();
+            filter.addAction(android.content.Intent.ACTION_SCREEN_OFF);
+            filter.addAction(android.content.Intent.ACTION_USER_PRESENT);
+            base.registerReceiver(menuReceiver, filter);
+        } catch (Throwable t) {
+            Logger.error("registerMenuReceiver", t.getMessage());
+            menuReceiver = null;
+        }
+    }
+
+    private static void unregisterMenuReceiver() {
+        try {
+            if (menuReceiver != null && appContext != null) {
+                appContext.unregisterReceiver(menuReceiver);
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            menuReceiver = null;
         }
     }
 
@@ -395,6 +478,21 @@ public class FakePowerMenu {
     private static void simulateShutdown(Context context) {
         Logger.blocked("FakePowerMenu", "fake_shutdown_initiated");
         try {
+            // Show the black overlay FIRST. Only commit to protected mode (and the
+            // irreversible silent/connectivity changes) if the overlay actually
+            // attached — otherwise the user would be locked into protected mode with
+            // no black screen to tap, and the only exit (20 taps) would be gone.
+            Context moduleCtx = getModuleContext(context);
+            boolean shown = showShutdownAnimation(context, moduleCtx.getString(R.string.fake_shutdown_text));
+            if (!shown) {
+                Logger.error("simulateShutdown", "overlay_failed_aborting_protected_mode");
+                return;
+            }
+
+            // Activate protected mode
+            isInProtectedMode = true;
+            isBlackPageActive = true;
+            Logger.hookSuccess("Protected mode ACTIVATED - Power button disabled");
 
             // Vibrate like real shutdown
             vibrateShutdown(context);
@@ -405,19 +503,8 @@ public class FakePowerMenu {
             // Enable WiFi, Mobile Data and Bluetooth for tracking
             enableConnectivity(context);
 
-            // Activate protected mode
-            isInProtectedMode = true;
-            isBlackPageActive = true;
-            Logger.hookSuccess("Protected mode ACTIVATED - Power button disabled");
-
-            // Show shutdown animation with text "Apagando..."
-            Context moduleCtx = getModuleContext(context);
-            showShutdownAnimation(context, moduleCtx.getString(R.string.fake_shutdown_text));
-
-
             // After animation time, remove only the TEXT (keep black screen)
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
-
                 hideTextKeepBlackScreen(); // Only hide the text, keep black screen forever
             }, FAKE_SHUTDOWN_DURATION);
 
@@ -432,6 +519,20 @@ public class FakePowerMenu {
     private static void simulateRestart(Context context) {
         Logger.blocked("FakePowerMenu", "fake_restart_initiated");
         try {
+            // Show restart animation with text "Reiniciando..." FIRST, then gate
+            // protected mode on it (see simulateShutdown for the rationale).
+            Context moduleCtx = getModuleContext(context);
+            boolean shown = showShutdownAnimation(context, moduleCtx.getString(R.string.fake_restart_text));
+            if (!shown) {
+                Logger.error("simulateRestart", "overlay_failed_aborting_protected_mode");
+                return;
+            }
+
+            // Activate protected mode
+            isInProtectedMode = true;
+            isBlackPageActive = true;
+            Logger.hookSuccess("Protected mode ACTIVATED - Power button disabled");
+
             // Vibrate like real restart
             vibrateShutdown(context);
 
@@ -440,15 +541,6 @@ public class FakePowerMenu {
 
             // Enable WiFi, Mobile Data and Bluetooth for tracking
             enableConnectivity(context);
-
-            // Activate protected mode
-            isInProtectedMode = true;
-            isBlackPageActive = true;
-            Logger.hookSuccess("Protected mode ACTIVATED - Power button disabled");
-
-            // Show restart animation with text "Reiniciando..."
-            Context moduleCtx = getModuleContext(context);
-            showShutdownAnimation(context, moduleCtx.getString(R.string.fake_restart_text));
 
             // After animation time, remove only the TEXT (keep black screen)
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -680,7 +772,7 @@ public class FakePowerMenu {
     /**
      * Shows shutdown animation with text
      */
-    private static void showShutdownAnimation(Context context, String message) {
+    private static boolean showShutdownAnimation(Context context, String message) {
         try {
             // Remove existing overlay if any
             removeBlackScreen();
@@ -738,7 +830,8 @@ public class FakePowerMenu {
                     WindowManager.LayoutParams.TYPE_SYSTEM_ERROR,
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                             | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                            | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED,
+                            | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                            | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
                     PixelFormat.OPAQUE
             );
 
@@ -759,8 +852,10 @@ public class FakePowerMenu {
             fadeIn.setInterpolator(new AccelerateDecelerateInterpolator());
             fadeIn.start();
 
+            return true;
         } catch (Throwable t) {
             Logger.error("showShutdownAnimation", t.getMessage());
+            return false;
         }
     }
 
@@ -811,7 +906,7 @@ public class FakePowerMenu {
                     @Override
                     public void onAnimationEnd(Animator animation) {
                         try {
-                            if (windowManager != null && viewToRemove.isAttachedToWindow()) {
+                            if (windowManager != null) {
                                 windowManager.removeView(viewToRemove);
                             }
                         } catch (Throwable ignored) {

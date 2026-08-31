@@ -80,59 +80,51 @@ public class VolPwrBlocker implements IXposedHookLoadPackage {
             return;
         }
 
-        // Hook powerLongPress - this is where the system triggers the vibration + global actions
+        // Hook the long-press / power-press entrypoints that trigger global actions.
+        // These are hooked BY NAME (every overload) because their signatures differ
+        // across Android versions: e.g. Android 17 uses powerLongPress(long) and
+        // powerPress(long,int,int), while older ROMs had powerLongPress() with no args.
+        // findAndHookMethod without arg types only matches a zero-arg method, so it
+        // silently missed these on modern Android.
+        final XC_MethodHook blockInProtected = new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) {
+                if (FakePowerMenu.isInProtectedMode()) {
+                    param.setResult(null);
+                    Logger.blocked("PhoneWindowManager#" + param.method.getName(), "blocked_in_protected_mode");
+                }
+            }
+        };
         String[] longPressMethods = {
-            "powerLongPress", "powerPress",
+            "powerLongPress", "powerPress", "powerVeryLongPress",
             "globalActionsDialogLongPress", "showGlobalActionsInternal"
         };
         for (String methodName : longPressMethods) {
-            try {
-                XposedHelpers.findAndHookMethod(pwm, methodName, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        if (FakePowerMenu.isInProtectedMode()) {
-                            param.setResult(null);
-                            Logger.blocked("PhoneWindowManager#" + methodName, "blocked_in_protected_mode");
-                        }
-                    }
-                });
-                Logger.hookSuccess("PhoneWindowManager#" + methodName + " hooked");
-            } catch (Throwable ignored) {
-                // Method may not exist on all ROM versions, that's ok
-            }
+            int n = hookAllByName(pwm, methodName, blockInProtected);
+            if (n > 0) Logger.hookSuccess("PhoneWindowManager#" + methodName + " hooked (" + n + ")");
         }
 
-        // Hook performHapticFeedbackLw to block the power menu vibration
-        try {
-            // Try the common signature
-            XposedHelpers.findAndHookMethod(pwm, "performHapticFeedbackLw",
-                    "android.view.WindowManagerPolicy$WindowState", int.class, boolean.class, String.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            if (FakePowerMenu.isInProtectedMode()) {
-                                param.setResult(false);
-                            }
-                        }
-                    });
-            Logger.hookSuccess("PhoneWindowManager#performHapticFeedbackLw hooked (4 args)");
-        } catch (Throwable ignored) {
-            try {
-                // Fallback: try with fewer args
-                XposedHelpers.findAndHookMethod(pwm, "performHapticFeedbackLw",
-                        "android.view.WindowManagerPolicy$WindowState", int.class, boolean.class,
-                        new XC_MethodHook() {
-                            @Override
-                            protected void beforeHookedMethod(MethodHookParam param) {
-                                if (FakePowerMenu.isInProtectedMode()) {
-                                    param.setResult(false);
-                                }
-                            }
-                        });
-                Logger.hookSuccess("PhoneWindowManager#performHapticFeedbackLw hooked (3 args)");
-            } catch (Throwable ignored2) {
-                Logger.hookFail("performHapticFeedbackLw", "Could not hook - vibration may still occur");
+        // Block the power-menu haptic while in protected mode. Android 17 renamed the
+        // old performHapticFeedbackLw(...) to performHapticFeedback(int, String), so we
+        // hook both names by method name and coerce the return to match its type.
+        final XC_MethodHook blockHaptic = new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) {
+                if (!FakePowerMenu.isInProtectedMode()) return;
+                Class<?> ret = ((Method) param.method).getReturnType();
+                if (ret == boolean.class || ret == Boolean.class) {
+                    param.setResult(false);
+                } else {
+                    param.setResult(null);
+                }
             }
+        };
+        int haptic = hookAllByName(pwm, "performHapticFeedback", blockHaptic)
+                + hookAllByName(pwm, "performHapticFeedbackLw", blockHaptic);
+        if (haptic > 0) {
+            Logger.hookSuccess("PhoneWindowManager haptic hooked (" + haptic + ")");
+        } else {
+            Logger.hookFail("performHapticFeedback", "Could not hook - vibration may still occur");
         }
 
         // Hook the Vibrator service directly to block vibration in protected mode
@@ -166,10 +158,16 @@ public class VolPwrBlocker implements IXposedHookLoadPackage {
     private void hookKeyCombination(final XC_LoadPackage.LoadPackageParam lpparam) {
         try {
             Class<?> pwm = lpparam.classLoader.loadClass("com.android.server.policy.PhoneWindowManager");
-            XposedHelpers.findAndHookMethod(pwm, "interceptKeyBeforeQueueing", KeyEvent.class, int.class, boolean.class, new XC_MethodHook() {
+            // Android 17 dropped the boolean parameter: interceptKeyBeforeQueueing is now
+            // (KeyEvent, int) instead of (KeyEvent, int, boolean). Hook every overload
+            // whose first arg is a KeyEvent so the signature change can't unhook us. The
+            // body only reads args[0] and the return type stays int, so it is signature-agnostic.
+            final XC_MethodHook interceptHook = new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                     try {
+                        if (param.args == null || param.args.length == 0) return;
+                        if (!(param.args[0] instanceof KeyEvent)) return;
                         KeyEvent event = (KeyEvent) param.args[0];
                         if (event == null) return;
 
@@ -244,11 +242,47 @@ public class VolPwrBlocker implements IXposedHookLoadPackage {
                         Logger.error("interceptKeyBeforeQueueing", t.getMessage());
                     }
                 }
-            });
-            Logger.hookSuccess("PhoneWindowManager#interceptKeyBeforeQueueing hooked");
+            };
+            int hooked = 0;
+            for (Method m : pwm.getDeclaredMethods()) {
+                if (!"interceptKeyBeforeQueueing".equals(m.getName())) continue;
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length >= 1 && p[0] == KeyEvent.class) {
+                    try {
+                        XposedBridge.hookMethod(m, interceptHook);
+                        hooked++;
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            if (hooked > 0) {
+                Logger.hookSuccess("PhoneWindowManager#interceptKeyBeforeQueueing hooked (" + hooked + ")");
+            } else {
+                Logger.hookFail("PhoneWindowManager#interceptKeyBeforeQueueing", "method_not_found");
+            }
         } catch (Throwable t) {
             Logger.hookFail("PhoneWindowManager#interceptKeyBeforeQueueing", t.getMessage());
         }
+    }
+
+    /**
+     * Hooks every declared method with the given name, regardless of signature.
+     * Returns how many overloads were successfully hooked.
+     */
+    private int hookAllByName(Class<?> clazz, String name, XC_MethodHook callback) {
+        int count = 0;
+        try {
+            for (Method m : clazz.getDeclaredMethods()) {
+                if (!name.equals(m.getName())) continue;
+                try {
+                    XposedBridge.hookMethod(m, callback);
+                    count++;
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return count;
     }
 
     private boolean isLocked(Object obj) {

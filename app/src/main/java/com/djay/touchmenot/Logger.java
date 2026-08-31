@@ -50,14 +50,24 @@ public class Logger {
     }
 
     public static void log(String category, String message) {
+        // Always emit to logcat FIRST. The hooks run in system_server / SystemUI,
+        // where the /sdcard file writer cannot be opened (no FUSE view), so `writer`
+        // stays null there. The previous code returned on null BEFORE Log.d, which
+        // left those processes with no diagnostics at all. logcat works everywhere:
+        //   adb logcat -s TouchMeNot:*
+        String line = String.format(Locale.US, "%s | %s | %s", nowTs(), category, message);
+        try {
+            Log.d("TouchMeNot", line);
+        } catch (Throwable ignored) {
+        }
+        // Best-effort file log (works from the app process; no-op in system_server).
         try {
             initOnce();
             Writer w = writer;
             if (w == null) return;
-            String line = String.format(Locale.US, "%s | %s | %s\n", nowTs(), category, message);
-            Log.d("TouchMeNot", line.trim());
             synchronized (w) {
                 w.write(line);
+                w.write("\n");
                 w.flush();
             }
         } catch (Throwable t) {

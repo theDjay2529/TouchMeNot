@@ -18,6 +18,12 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public class QSBlocker implements IXposedHookLoadPackage {
     private static final String SYSTEMUI = "com.android.systemui";
 
+    // Verbose class/method tracing + per-touch logging. Must stay OFF in production:
+    // the touch logging hooked QSTileView#onTouchEvent and wrote to disk (with flush)
+    // on every single tile touch, which is visible SystemUI lag. Flip to true only when
+    // capturing method names on a new ROM.
+    private static final boolean DIAGNOSTICS = false;
+
     @Override
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         if (!SYSTEMUI.equals(lpparam.packageName)) return;
@@ -68,14 +74,16 @@ public class QSBlocker implements IXposedHookLoadPackage {
             DiagnosticLogger.log("HOOK_FAIL", "CellularTile#handleSecondaryClick not found: " + t.getMessage());
         }
 
-        // Inspect available methods on target tiles to capture exact names in logs
-        logClassMethods(lpparam, "com.android.systemui.qs.tiles.BluetoothTile");
-        logClassMethods(lpparam, "com.android.systemui.qs.tiles.WifiTile");
-        logClassMethods(lpparam, "com.android.systemui.qs.tiles.InternetTile");
-        logClassMethods(lpparam, "com.android.systemui.qs.tiles.CellularTile");
+        if (DIAGNOSTICS) {
+            // Inspect available methods on target tiles to capture exact names in logs
+            logClassMethods(lpparam, "com.android.systemui.qs.tiles.BluetoothTile");
+            logClassMethods(lpparam, "com.android.systemui.qs.tiles.WifiTile");
+            logClassMethods(lpparam, "com.android.systemui.qs.tiles.InternetTile");
+            logClassMethods(lpparam, "com.android.systemui.qs.tiles.CellularTile");
 
-        // Log touch interaction entrypoints to help trace which tile view is used
-        hookQSTileViewTouchLogging(lpparam);
+            // Log touch interaction entrypoints to help trace which tile view is used
+            hookQSTileViewTouchLogging(lpparam);
+        }
     }
 
     private void hookQSTileImplClick(XC_LoadPackage.LoadPackageParam lpparam) {
@@ -116,35 +124,52 @@ public class QSBlocker implements IXposedHookLoadPackage {
     }
 
     private void hookInternetDialog(XC_LoadPackage.LoadPackageParam lpparam) {
-        try {
-            Class<?> clazz = XposedHelpers.findClass("com.android.systemui.qs.tiles.dialog.InternetDialogControllerImpl", lpparam.classLoader);
-            for (Method m : clazz.getDeclaredMethods()) {
-                if (!"onUserClickedInternetDialog".equals(m.getName())) continue;
-                de.robv.android.xposed.XposedBridge.hookMethod(m, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        try {
-                            Context ctx = getContextFromAny(param.thisObject);
-                            if (ctx != null) {
+        // The internet dialog/details controller mutates radio state when the user
+        // toggles Wi-Fi / airplane from inside the panel. Its class and methods were
+        // renamed over time, so we try a list of (class, method) candidates and hook
+        // whichever exist:
+        //   - Legacy: InternetDialogControllerImpl#onUserClickedInternetDialog
+        //   - Android 17: InternetDetailsContentController#{setWifiEnabled, setAirplaneModeDisabled}
+        // Each is gated on keyguard-locked, so it only ever adds blocking while locked.
+        String[][] candidates = {
+            {"com.android.systemui.qs.tiles.dialog.InternetDialogControllerImpl", "onUserClickedInternetDialog"},
+            {"com.android.systemui.qs.tiles.dialog.InternetDetailsContentController", "setWifiEnabled"},
+            {"com.android.systemui.qs.tiles.dialog.InternetDetailsContentController", "setAirplaneModeDisabled"},
+        };
+        int hooked = 0;
+        for (String[] cand : candidates) {
+            final String className = cand[0];
+            final String methodName = cand[1];
+            try {
+                Class<?> clazz = XposedHelpers.findClass(className, lpparam.classLoader);
+                for (Method m : clazz.getDeclaredMethods()) {
+                    if (!methodName.equals(m.getName())) continue;
+                    de.robv.android.xposed.XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            try {
+                                Context ctx = getContextFromAny(param.thisObject);
+                                if (ctx == null) return;
                                 FeatureFlags.ensureInitialized(ctx);
-                                if (isKeyguardLocked(ctx)) {
-                                    if (!FeatureFlags.blockInternet()) return;
-                                    rejectFeedback(ctx);
-                                    param.setResult(null);
-                                    Logger.blocked("InternetDialogControllerImpl#onUserClickedInternetDialog", "keyguard_locked");
-                                }
+                                if (!isKeyguardLocked(ctx)) return;
+                                if (!FeatureFlags.blockInternet()) return;
+                                rejectFeedback(ctx);
+                                param.setResult(null);
+                                Logger.blocked(className + "#" + methodName, "keyguard_locked");
+                            } catch (Throwable t) {
+                                Logger.error(className + "#" + methodName, t.getMessage());
                             }
-                        } catch (Throwable t) {
-                            Logger.error("InternetDialogControllerImpl#onUserClickedInternetDialog", t.getMessage());
                         }
-                    }
-                });
-                Logger.hookSuccess("InternetDialogControllerImpl#onUserClickedInternetDialog hooked");
-                return;
+                    });
+                    hooked++;
+                    Logger.hookSuccess(className + "#" + methodName + " hooked");
+                }
+            } catch (Throwable t) {
+                // Class not present on this ROM/version — expected for the candidates that don't apply.
             }
-            Logger.hookFail("InternetDialogControllerImpl#onUserClickedInternetDialog", "method_not_found");
-        } catch (Throwable t) {
-            Logger.hookFail("InternetDialogControllerImpl", t.getMessage());
+        }
+        if (hooked == 0) {
+            Logger.hookFail("InternetDialog", "no candidate class/method found");
         }
     }
 
